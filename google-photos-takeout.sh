@@ -1,11 +1,13 @@
 #!/bin/bash
 
+photos="$1"
+logs=../logs
+output=../output
+
 if [ -z "$(type -path exiftool)" ] ;then
 	echo "exiftool does not exist"
 	exit 1
 fi
-
-photos="$1"
 
 if [ -z "$photos" ] || [ ! -d "$photos" ] ;then
 	echo "$(basename "$0") /path/to/photos"
@@ -14,125 +16,94 @@ fi
 
 cd "$photos" || exit 1
 
-mkdir -p ../logs || exit 1
-rm ../logs/*.txt
+mkdir -p "$logs" || exit 1
 
 echo "
-1) Fix incorrectly named json files
-" | tee ../logs/01-fix-json.txt
+Fix incorrectly named json files (e.g. IMG_0001.HEIC(1).json -> IMG_0001(1).HEIC.json)
+" | tee "$logs"/json.txt
 
-# e.g. IMG_0001.HEIC(1).json -> IMG_0001(1).HEIC.json
 find . -type f -iname "*([[:digit:]]).json" | while read json ;do
 	mv -v "$json" "$(echo "$json" | sed 's/\(.[[:alpha:]]*\)\(([[:digit:]])\)/\2\1/')"
 done \
-	2>&1 | tee -a ../logs/01-fix-json.txt
+	2>&1 | tee -a "$logs"/json.txt
 	
 echo "
-2) Import Create Date tag from json files if required
-" | tee ../logs/02-import-json.txt
+Import Create Date tag from json files if required
+" | tee -a "$logs"/json.txt
 
-exiftool -progress \
+exiftool \
 	-if 'not $CreateDate' \
-	-tagsfromfile %d%F.json '-createdate<photoTakenTimetimestamp' \
-	-d %s -overwrite_original \
+	-tagsfromfile %d%F.json \
+	'-createdate<photoTakenTimetimestamp' \
+	-d %s \
+	-overwrite_original \
+	-efile3 "$logs"/json-err.txt \
+	-progress \
 	. \
-	2>&1 | tee -a ../logs/02-import-json.txt
-
-# Let the kludge begin
+	2>&1 | tee -a "$logs"/json.txt
 
 echo "
-3) Fix MOV files with MP4 extensions
-" | tee ../logs/03-fix-mov-extensions.txt
+Fix file extensions
+" | tee "$logs"/extensions.txt
 
-exiftool -progress \
-	-if '$make =~ /^Apple/' \
+exiftool \
 	-if '$mimetype =~ /video\/quicktime/' \
 	'-filename=%d%f.MOV' \
 	-ext mp4 \
-	. \
-	2>&1 | tee -a ../logs/03-fix-mov-extensions.txt
-	
-echo "
-4) Fix JPG files with HEIC extensions
-" | tee ../logs/04-fix-jpg-extensions.txt
-
-exiftool -progress \
-	-if '$make =~ /^Apple/' \
+	-execute \
 	-if '$mimetype =~ /image\/jpeg/' \
 	'-filename=%d%f.JPG' \
 	-ext heic \
+	-common_args \
+	-if '$make =~ /^Apple/' \
+	-efile3 "$logs"/extensions-err.txt \
+	-progress \
 	. \
-	2>&1 | tee -a ../logs/04-fix-jpg-extensions.txt
+	2>&1 | tee -a "$logs"/extensions.txt
 
 echo "
-5) Move all files from an Apple device that include a copy number e.g. IMG_0001(1).HEIC
-" | tee ../logs/05-move-1.txt
+Find and rename Live Photos
+" | tee "$logs"/live-photos.txt
 
-exiftool -progress \
-	-if '$make =~ /^Apple/' \
-	-if '$filename =~ /^IMG_.*\([[:digit:]]\)/' \
-	'-filename<../output/${createdate#;DateFmt("%Y/%Y-%m-%d")}/IMG_${model;s/ /-/g}-${filename;s/IMG_//;s/\([[:digit:]]\)//}' \
+exiftool \
+	'-filename<$ContentIdentifier.%le' \
+	-ext mov \
+	-ext mp4 \
+	-execute \
+	'-filename<$MediaGroupUUID.%le' \
 	-ext heic \
 	-ext jpg \
+	-execute \
+	-tagsfromfile %d%f.jpg \
+	"-filename<$output"'/${CreateDate;DateFmt("%Y/%Y-%m-%d/%Y%m%d_%H%M%S")}_${MediaGroupUUID;s/-.*$//}.%le' \
+	-tagsfromfile %d%f.heic \
+	"-filename<$output"'/${CreateDate;DateFmt("%Y/%Y-%m-%d/%Y%m%d_%H%M%S")}_${MediaGroupUUID;s/-.*$//}.%le' \
 	-ext mov \
 	-ext mp4 \
-	. \
-	2>&1 | tee -a ../logs/05-move-1.txt
-
-echo "
-5) Move reminaing files from an Apple device
-" | tee ../logs/05-move-2.txt
-
-exiftool -progress \
-	-if '$make =~ /^Apple/' \
-	-if '$filename =~ /^IMG_/' \
-	'-filename<../output/${createdate#;DateFmt("%Y/%Y-%m-%d")}/IMG_${model;s/ /-/g}-${filename;s/IMG_//}' \
+	-execute \
+	"-filename<$output"'/${CreateDate;DateFmt("%Y/%Y-%m-%d/%Y%m%d_%H%M%S")}_${ContentIdentifier;s/-.*$//}.%le' \
+	-ext mov \
+	-ext mp4 \
+	-execute \
+	"-filename<$output"'/${CreateDate;DateFmt("%Y/%Y-%m-%d/%Y%m%d_%H%M%S")}_${MediaGroupUUID;s/-.*$//}.%le' \
 	-ext heic \
 	-ext jpg \
-	-ext mov \
-	-ext mp4 \
+	-common_args \
+	-if '$make =~ /^Apple/' \
+	-if '$ContentIdentifier or $MediaGroupUUID' \
+	-efile3 "$logs"/live-photos-err.txt \
+	-progress \
 	. \
-	2>&1 | tee -a ../logs/05-move-2.txt
+	2>&1 | tee -a "$logs"/live-photos.txt
 
 echo "
-6) Rename video files with a Content Identifier tag using the Create Date tag from the matching photo (if it exists).
-" | tee ../logs/06-rename-live-video.txt
+Rename everything else with a Create Date tag
+" | tee "$logs"/everything-else.txt
 
-exiftool -progress \
-	-if '$make =~ /^Apple/' \
-	-if '$filename =~ /^IMG_/' \
-	-if '$ContentIdentifier' \
-	-tagsfromfile %d%f.JPG '-filename<${createdate#;DateFmt("%Y%m%d_%H%M%S_")}${filename;s/IMG_//;s/\.[^.]*$//}%+c.%le' \
-	-tagsfromfile %d%f.HEIC '-filename<${createdate#;DateFmt("%Y%m%d_%H%M%S_")}${filename;s/IMG_//;s/\.[^.]*$//}%+c.%le' \
-	-ext mov \
-	-ext mp4 \
-	-r ../output \
-	2>&1 | tee -a ../logs/06-rename-live-video.txt
-
-echo "
-7) Rename all remaining files from an Apple device
-" | tee ../logs/07-rename-remaining-apple.txt
-
-exiftool -progress \
-	-if '$make =~ /^Apple/' \
-	-if '$filename =~ /^IMG_/' \
-	'-filename<${createdate#;DateFmt("%Y%m%d_%H%M%S_")}${filename;s/IMG_//;s/\.[^.]*$//}%+c.%le' \
-	-ext heic \
-	-ext jpg \
-	-ext mov \
-	-ext mp4 \
-	-r ../output \
-	2>&1 | tee -a ../logs/07-rename-remaining-apple.txt
-
-# Everything else
-
-echo "
-8) Bulk move everything else with a Create Date tag
-" | tee ../logs/08-everything-else.txt
-
-exiftool -progress \
+exiftool \
 	-if '$CreateDate' \
-	'-filename<CreateDate' \
-	-d ../output/%Y/%Y-%m-%d/%Y%m%d_%H%M%S%%+c.%%le \
+	"-filename<$output"'/${CreateDate;DateFmt("%Y/%Y-%m-%d/%Y%m%d_%H%M%S")}%+2c.%le' \
+	-efile3 "$logs"/everything-else-err.txt \
+	-progress \
 	. \
-	2>&1 | tee -a ../logs/08-everything-else.txt
+	2>&1 | tee -a "$logs"/everything-else.txt
