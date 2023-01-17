@@ -48,11 +48,11 @@ Fix file extensions
 
 exiftool \
 	-if '$mimetype =~ /video\/quicktime/' \
-	'-filename=%d%f.MOV' \
+	'-filename=%d%f%+c.MOV' \
 	-ext mp4 \
 	-execute \
 	-if '$mimetype =~ /image\/jpeg/' \
-	'-filename=%d%f.JPG' \
+	'-filename=%d%f%+c.JPG' \
 	-ext heic \
 	-common_args \
 	-if '$make =~ /^Apple/' \
