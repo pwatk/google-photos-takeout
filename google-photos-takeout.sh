@@ -62,7 +62,7 @@ exiftool \
 	2>&1 | tee -a "$logs"/extensions.txt
 
 echo "
-Find and rename Live Photos
+Apple Live Photos
 " | tee "$logs"/live-photos.txt
 
 exiftool \
@@ -95,6 +95,20 @@ exiftool \
 	-progress \
 	. \
 	2>&1 | tee -a "$logs"/live-photos.txt
+
+echo "
+Apple Burst Photos
+" | tee "$logs"/burst-photos.txt
+
+exiftool \
+	-if '$make =~ /^Apple/' \
+	-if '$BurstUUID' \
+	"-filename<$output"'/${CreateDate;DateFmt("%Y/%Y-%m-%d/%Y%m%d_%H%M%S")}_${SubSecTimeOriginal}_${BurstUUID;s/-.*$//}.%le' \
+	-efile3 "$logs"/burst-photos-err.txt \
+	-progress \
+	. \
+	2>&1 | tee -a "$logs"/burst-photos.txt
+	
 
 echo "
 Rename everything else with a Create Date tag
