@@ -103,7 +103,7 @@ Apple Burst Photos
 exiftool \
 	-if '$make =~ /^Apple/' \
 	-if '$BurstUUID' \
-	"-filename<$output"'/${CreateDate;DateFmt("%Y/%Y-%m-%d/%Y%m%d_%H%M%S")}_${SubSecTimeOriginal}_${BurstUUID;s/-.*$//}.%le' \
+	"-filename<$output"'/${CreateDate;DateFmt("%Y/%Y-%m-%d/%Y%m%d_%H%M%S")}-${SubSecTimeOriginal}_${BurstUUID;s/-.*$//}.%le' \
 	-efile3 "$logs"/burst-photos-err.txt \
 	-progress \
 	. \
