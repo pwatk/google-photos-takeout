@@ -116,7 +116,7 @@ Rename everything else with a Create Date tag
 
 exiftool \
 	-if '$CreateDate' \
-	"-filename<$output"'/${CreateDate;DateFmt("%Y/%Y-%m-%d/%Y%m%d_%H%M%S")}%+2c.%le' \
+	"-filename<$output"'/${CreateDate;DateFmt("%Y/%Y-%m-%d/%Y%m%d_%H%M%S")}%+3c.%le' \
 	-efile3 "$logs"/everything-else-err.txt \
 	-progress \
 	. \
